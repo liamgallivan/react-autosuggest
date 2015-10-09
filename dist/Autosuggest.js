@@ -55,6 +55,7 @@ var Autosuggest = (function (_Component) {
       cache: _react.PropTypes.bool, // Set it to false to disable in-memory caching
       id: _react.PropTypes.string, // Used in aria-* attributes. If multiple Autosuggest's are rendered on a page, they must have unique ids.
       scrollBar: _react.PropTypes.bool, // Set it to true when the suggestions container can have a scroll bar
+      nonFocusSubmit: _react.PropTypes.func, // func for non focus submit
       theme: _react.PropTypes.object // Custom theme. See: https://github.com/markdalgleish/react-themeable
     },
     enumerable: true
@@ -403,6 +404,8 @@ var Autosuggest = (function (_Component) {
           // Enter
           if (this.state.valueBeforeUpDown !== null && this.suggestionIsFocused()) {
             this.onSuggestionSelected(event);
+          } else if (this.props.nonFocusSubmit) {
+            this.props.nonFocusSubmit(event);
           }
 
           this.setSuggestionsState(null);
