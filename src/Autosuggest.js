@@ -15,7 +15,8 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     inputAttributes: PropTypes.object,      // Attributes to pass to the input field (e.g. { id: 'my-input', className: 'sweet autosuggest' })
     cache: PropTypes.bool,                  // Set it to false to disable in-memory caching
     id: PropTypes.string,                   // Used in aria-* attributes. If multiple Autosuggest's are rendered on a page, they must have unique ids.
-    scrollBar: PropTypes.bool               // Set it to true when the suggestions container can have a scroll bar
+    scrollBar: PropTypes.bool,               // Set it to true when the suggestions container can have a scroll bar
+    nonFocusSubmit: PropTypes.func,         // func for non focus submit
   }
 
   static defaultProps = {
@@ -284,6 +285,8 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
       case 13: // Enter
         if (this.state.valueBeforeUpDown !== null && this.suggestionIsFocused()) {
           this.onSuggestionSelected(event);
+        } else if (this.props.nonFocusSubmit) {
+          this.props.nonFocusSubmit(event);
         }
 
         this.setSuggestionsState(null);
