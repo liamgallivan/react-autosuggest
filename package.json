@@ -1,6 +1,6 @@
 {
   "name": "react-autosuggest-vantage",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "WAI-ARIA compliant React autosuggest component",
   "main": "dist/Autosuggest.js",
   "repository": {
@@ -28,7 +28,7 @@
   },
   "peerDependencies": {
     "react": "^0.13.3",
-    "react-dom": "^0.13.3"
+    "react-dom": "^0.14"
   },
   "devDependencies": {
     "babel": "^5.8.23",
