@@ -1,10 +1,13 @@
-import React, { Component, PropTypes, findDOMNode } from 'react';
+import React, { Component, PropTypes } from 'react';
+import { findDOMNode } from 'react-dom';
 import debounce from 'debounce';
-import classnames from 'classnames';
+import themeable from 'react-themeable';
 import sectionIterator from './sectionIterator';
 
-export default class Autosuggest extends Component { // eslint-disable-line no-shadow
+export default class Autosuggest extends Component {
   static propTypes = {
+    value: PropTypes.string,                // Controlled value of the selected suggestion
+    defaultValue: PropTypes.string,         // Initial value of the text
     suggestions: PropTypes.func.isRequired, // Function to get the suggestions
     suggestionRenderer: PropTypes.func,     // Function that renders a given suggestion (must be implemented when suggestions are objects)
     suggestionValue: PropTypes.func,        // Function that maps suggestion object to input value (must be implemented when suggestions are objects)
@@ -17,6 +20,7 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     id: PropTypes.string,                   // Used in aria-* attributes. If multiple Autosuggest's are rendered on a page, they must have unique ids.
     scrollBar: PropTypes.bool,               // Set it to true when the suggestions container can have a scroll bar
     nonFocusSubmit: PropTypes.func,         // func for non focus submit
+    theme: PropTypes.object                 // Custom theme. See: https://github.com/markdalgleish/react-themeable
   }
 
   static defaultProps = {
@@ -27,7 +31,16 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     inputAttributes: {},
     cache: true,
     id: '1',
-    scrollBar: false
+    scrollBar: false,
+    theme: {
+      root: 'react-autosuggest',
+      suggestions: 'react-autosuggest__suggestions',
+      suggestion: 'react-autosuggest__suggestion',
+      suggestionIsFocused: 'react-autosuggest__suggestion--focused',
+      section: 'react-autosuggest__suggestions-section',
+      sectionName: 'react-autosuggest__suggestions-section-name',
+      sectionSuggestions: 'react-autosuggest__suggestions-section-suggestions'
+    }
   }
 
   constructor(props) {
@@ -35,7 +48,7 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
 
     this.cache = {};
     this.state = {
-      value: props.inputAttributes.value || '',
+      value: props.value || props.defaultValue || '',
       suggestions: null,
       focusedSectionIndex: null,    // Used when multiple sections are displayed
       focusedSuggestionIndex: null, // Index within a section
@@ -44,6 +57,7 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
                                     // interaction in order to revert back if ESC hit.
                                     // See: http://www.w3.org/TR/wai-aria-practices/#autocomplete
     };
+    this.isControlledComponent = (typeof props.value !== 'undefined');
     this.suggestionsFn = debounce(props.suggestions, 100);
     this.onChange = props.inputAttributes.onChange || (() => {});
     this.onFocus = props.inputAttributes.onFocus || (() => {});
@@ -52,17 +66,33 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     this.justUnfocused = false; // Helps to avoid calling onSuggestionUnfocused
                                 // twice when mouse is moving between suggestions
     this.justClickedOnSuggestion = false; // Helps not to call inputAttributes.onBlur
-                                          // and showSuggestions() when suggestion is clicked
-
+                                          // and showSuggestions() when suggestion is clicked.
+                                          // Also helps not to call handleValueChange() in
+                                          // componentWillReceiveProps() when suggestion is clicked.
+    this.justPressedUpDown = false; // Helps not to call handleValueChange() in
+                                    // componentWillReceiveProps() when Up or Down is pressed.
+    this.justPressedEsc = false; // Helps not to call handleValueChange() in
+                                 // componentWillReceiveProps() when ESC is pressed.
     this.onInputChange = ::this.onInputChange;
     this.onInputKeyDown = ::this.onInputKeyDown;
     this.onInputFocus = ::this.onInputFocus;
     this.onInputBlur = ::this.onInputBlur;
   }
 
+  componentWillReceiveProps(nextProps) {
+    if (this.isControlledComponent) {
+      const inputValue = findDOMNode(this.refs.input).value;
+
+      if (nextProps.value !== inputValue &&
+          !this.justClickedOnSuggestion && !this.justPressedUpDown && !this.justPressedEsc) {
+        this.handleValueChange(nextProps.value);
+      }
+    }
+  }
+
   resetSectionIterator(suggestions) {
     if (this.isMultipleSections(suggestions)) {
-      sectionIterator.setData(suggestions.map( suggestion => suggestion.suggestions.length ));
+      sectionIterator.setData(suggestions.map(suggestion => suggestion.suggestions.length));
     } else {
       sectionIterator.setData(suggestions === null ? [] : suggestions.length);
     }
@@ -232,6 +262,8 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
                : this.getSuggestionValue(sectionIndex, suggestionIndex)
     };
 
+    this.justPressedUpDown = true;
+
     // When users starts to interact with Up/Down keys, remember input's value.
     if (this.state.valueBeforeUpDown === null) {
       newState.valueBeforeUpDown = this.state.value;
@@ -252,10 +284,22 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     }
 
     this.setState(newState);
+
+    setTimeout(() => this.justPressedUpDown = false);
   }
 
   onSuggestionSelected(event) {
-    const focusedSuggestion = this.getFocusedSuggestion();
+    let focusedSuggestion = this.getFocusedSuggestion(); // Required when Enter is pressed
+
+    if (focusedSuggestion === null) {
+      // We are on a mobile device
+      const sectionIndex = event.target.getAttribute('data-section-index');
+      const touchedSectionIndex = (typeof sectionIndex === 'string' ? +sectionIndex : null);
+      const touchedSuggestionIndex = +event.target.getAttribute('data-suggestion-index');
+
+      focusedSuggestion =
+        this.getSuggestion(touchedSectionIndex, touchedSuggestionIndex);
+    }
 
     this.props.onSuggestionUnfocused(focusedSuggestion);
     this.props.onSuggestionSelected(focusedSuggestion, event);
@@ -265,17 +309,17 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     const newValue = event.target.value;
 
     this.onSuggestionUnfocused();
+    this.handleValueChange(newValue);
+    this.showSuggestions(newValue);
+  }
 
+  handleValueChange(newValue) {
     if (newValue !== this.state.value) {
       this.onChange(newValue);
+      this.setState({
+        value: newValue
+      });
     }
-
-    this.setState({
-      value: newValue,
-      valueBeforeUpDown: null
-    });
-
-    this.showSuggestions(newValue);
   }
 
   onInputKeyDown(event) {
@@ -307,12 +351,15 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
         }
 
         this.onSuggestionUnfocused();
+        this.justPressedEsc = true;
 
         if (typeof newState.value === 'string' && newState.value !== this.state.value) {
           this.onChange(newState.value);
         }
 
         this.setState(newState);
+
+        setTimeout(() => this.justPressedEsc = false);
         break;
 
       case 38: // Up
@@ -389,7 +436,7 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     });
   }
 
-  onSuggestionMouseDown(sectionIndex, suggestionIndex, event) {
+  onSuggestionClick(sectionIndex, suggestionIndex, event) {
     const suggestionValue = this.getSuggestionValue(sectionIndex, suggestionIndex);
 
     this.justClickedOnSuggestion = true;
@@ -444,33 +491,37 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     }
   }
 
-  renderSuggestionsList(suggestions, sectionIndex) {
+  renderSuggestionsList(theme, suggestions, sectionIndex) {
     return suggestions.map((suggestion, suggestionIndex) => {
-      const classes = classnames({
-        'react-autosuggest__suggestion': true,
-        'react-autosuggest__suggestion--focused':
-          sectionIndex === this.state.focusedSectionIndex &&
-          suggestionIndex === this.state.focusedSuggestionIndex
-      });
+      const styles = theme(suggestionIndex, 'suggestion',
+        sectionIndex === this.state.focusedSectionIndex &&
+        suggestionIndex === this.state.focusedSuggestionIndex &&
+        'suggestionIsFocused'
+      );
       const suggestionRef =
         this.getSuggestionRef(sectionIndex, suggestionIndex);
+      const onSuggestionClick = event =>
+        this.onSuggestionClick(sectionIndex, suggestionIndex, event);
 
       return (
         <li id={this.getSuggestionId(sectionIndex, suggestionIndex)}
-            className={classes}
+            {...styles}
             role="option"
             ref={suggestionRef}
             key={suggestionRef}
+            data-section-index={sectionIndex}
+            data-suggestion-index={suggestionIndex}
             onMouseEnter={() => this.onSuggestionMouseEnter(sectionIndex, suggestionIndex)}
             onMouseLeave={() => this.onSuggestionMouseLeave(sectionIndex, suggestionIndex)}
-            onMouseDown={event => this.onSuggestionMouseDown(sectionIndex, suggestionIndex, event)}>
+            onMouseDown={onSuggestionClick}
+            onTouchStart={onSuggestionClick}>
           {this.renderSuggestionContent(suggestion)}
         </li>
       );
     });
   }
 
-  renderSuggestions() {
+  renderSuggestions(theme) {
     if (this.state.suggestions === null) {
       return null;
     }
@@ -478,22 +529,22 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
     if (this.isMultipleSections(this.state.suggestions)) {
       return (
         <div id={'react-autosuggest-' + this.props.id}
-             className="react-autosuggest__suggestions"
+             {...theme('suggestions', 'suggestions')}
              ref="suggestions"
              role="listbox">
           {this.state.suggestions.map((section, sectionIndex) => {
             const sectionName = section.sectionName ? (
-              <div className="react-autosuggest__suggestions-section-name">
+              <div {...theme('sectionName-' + sectionIndex, 'sectionName')}>
                 {section.sectionName}
               </div>
             ) : null;
 
             return section.suggestions.length === 0 ? null : (
-              <div className="react-autosuggest__suggestions-section"
+              <div {...theme('section-' + sectionIndex, 'section')}
                    key={'section-' + sectionIndex}>
                 {sectionName}
-                <ul className="react-autosuggest__suggestions-section-suggestions">
-                  {this.renderSuggestionsList(section.suggestions, sectionIndex)}
+                <ul {...theme('sectionSuggestions-' + sectionIndex, 'sectionSuggestions')}>
+                  {this.renderSuggestionsList(theme, section.suggestions, sectionIndex)}
                 </ul>
               </div>
             );
@@ -504,35 +555,37 @@ export default class Autosuggest extends Component { // eslint-disable-line no-s
 
     return (
       <ul id={'react-autosuggest-' + this.props.id}
-          className="react-autosuggest__suggestions"
+          {...theme('suggestions', 'suggestions')}
           ref="suggestions"
           role="listbox">
-        {this.renderSuggestionsList(this.state.suggestions, null)}
+        {this.renderSuggestionsList(theme, this.state.suggestions, null)}
       </ul>
     );
   }
 
   render() {
-    const ariaActivedescendant =
-      this.getSuggestionId(this.state.focusedSectionIndex, this.state.focusedSuggestionIndex);
+    const { id, inputAttributes } = this.props;
+    const { value, suggestions, focusedSectionIndex, focusedSuggestionIndex } = this.state;
+    const theme = themeable(this.props.theme);
+    const ariaActivedescendant = this.getSuggestionId(focusedSectionIndex, focusedSuggestionIndex);
 
     return (
-      <div className="react-autosuggest">
-        <input {...this.props.inputAttributes}
-               type={this.props.inputAttributes.type || 'text'}
-               value={this.state.value}
+      <div {...theme('root', 'root')}>
+        <input {...inputAttributes}
+               type={inputAttributes.type || 'text'}
+               value={value}
                autoComplete="off"
                role="combobox"
                aria-autocomplete="list"
-               aria-owns={'react-autosuggest-' + this.props.id}
-               aria-expanded={this.state.suggestions !== null}
+               aria-owns={'react-autosuggest-' + id}
+               aria-expanded={suggestions !== null}
                aria-activedescendant={ariaActivedescendant}
                ref="input"
                onChange={this.onInputChange}
                onKeyDown={this.onInputKeyDown}
                onFocus={this.onInputFocus}
                onBlur={this.onInputBlur} />
-        {this.renderSuggestions()}
+        {this.renderSuggestions(theme)}
       </div>
     );
   }
