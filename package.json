@@ -1,6 +1,6 @@
 {
   "name": "react-autosuggest",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "WAI-ARIA compliant React autosuggest component",
   "main": "dist/Autosuggest.js",
   "repository": {
@@ -27,8 +27,7 @@
     "react-themeable": "^1.0.1"
   },
   "peerDependencies": {
-    "react": "^0.14.0",
-    "react-dom": "^0.14.0"
+    "react": "^0.14.0"
   },
   "devDependencies": {
     "babel": "^5.8.23",
@@ -37,7 +36,7 @@
     "chai": "^3.3.0",
     "css-loader": "^0.19.0",
     "eslint": "^1.6.0",
-    "eslint-loader": "^1.0.0",
+    "eslint-loader": "^1.1.0",
     "eslint-plugin-react": "^3.5.1",
     "extract-text-webpack-plugin": "^0.8.2",
     "jsdom": "<6.5.1",
